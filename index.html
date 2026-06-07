@@ -1,0 +1,199 @@
+
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: transparent; }
+  #stage {
+    width: 100%;
+    aspect-ratio: 16/9;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, #6A0DAD 0%, #9B3DD4 30%, #6BAED6 70%, #87CEEB 100%);
+    border-radius: 8px;
+  }
+  .glow {
+    position: absolute;
+    bottom: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 60%; height: 40%;
+    background: radial-gradient(ellipse, rgba(220,180,255,0.35) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+</style>
+<div id="stage">
+  <div class="glow"></div>
+  <canvas id="c"></canvas>
+</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const stage = document.getElementById('stage');
+
+function resize() {
+  canvas.width = stage.clientWidth;
+  canvas.height = stage.clientHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const W = () => canvas.width;
+const H = () => canvas.height;
+
+const STRIPS = [];
+const COUNT = 22;
+
+function makeStrip(i, init) {
+  const depth = 0.3 + Math.random() * 0.7;
+  const speed = (0.08 + Math.random() * 0.18) * (0.4 + depth * 0.6);
+  const w = (40 + Math.random() * 35) * depth;
+  const h = w * 0.72;
+  const rx = (Math.random() - 0.5) * 60;
+  const ry = (Math.random() - 0.5) * 60;
+  const rz = (Math.random() - 0.5) * 40;
+  const rxSpd = (Math.random() - 0.5) * 0.4;
+  const rySpd = (Math.random() - 0.5) * 0.3;
+  const rzSpd = (Math.random() - 0.5) * 0.25;
+  const x = Math.random() * 100;
+  const startY = init ? Math.random() * 100 : 105 + Math.random() * 20;
+  const wobbleAmp = Math.random() * 1.5;
+  const wobbleFreq = 0.5 + Math.random() * 0.8;
+  const wobbleOff = Math.random() * Math.PI * 2;
+  return { x, y: startY, depth, speed, w, h, rx, ry, rz, rxSpd, rySpd, rzSpd, wobbleAmp, wobbleFreq, wobbleOff };
+}
+
+for (let i = 0; i < COUNT; i++) STRIPS.push(makeStrip(i, true));
+
+function drawFilmStrip(ctx, w, h, opacity, rx, ry, rz) {
+  ctx.save();
+
+  // Perspective skew using transform
+  const cosX = Math.cos(rx * Math.PI/180);
+  const sinX = Math.sin(rx * Math.PI/180);
+  const cosY = Math.cos(ry * Math.PI/180);
+  const sinY = Math.sin(ry * Math.PI/180);
+  const cosZ = Math.cos(rz * Math.PI/180);
+  const sinZ = Math.sin(rz * Math.PI/180);
+
+  const scaleX = cosY;
+  const scaleY = cosX;
+  const skewX = sinZ * 0.6;
+  const skewY = sinX * 0.4;
+
+  ctx.transform(cosZ * scaleX, sinZ * scaleY + skewY, -sinZ * scaleX + skewX, cosZ * scaleY, 0, 0);
+
+  const curve = Math.sin(ry * Math.PI / 180) * w * 0.3;
+  const alpha = opacity;
+
+  // Film body gradient
+  const isWavy = Math.abs(ry) > 15;
+
+  if (isWavy) {
+    // Draw as a curved/wavy strip using bezier
+    ctx.beginPath();
+    const cp1x = -w*0.5 + curve * 0.5;
+    const cp2x = w * 0.5 + curve * 0.5;
+    ctx.moveTo(-w*0.5, -h*0.5);
+    ctx.bezierCurveTo(cp1x, -h*0.5 + h*0.2, cp2x, -h*0.5 + h*0.2, w*0.5 + curve, -h*0.5);
+    ctx.bezierCurveTo(cp2x, -h*0.5 + h*0.8, cp1x, h*0.5 - h*0.2, -w*0.5, h*0.5);
+    ctx.closePath();
+  } else {
+    ctx.beginPath();
+    ctx.roundRect(-w*0.5, -h*0.5, w, h, 3);
+  }
+
+  const grd = ctx.createLinearGradient(-w*0.5, -h*0.5, w*0.5, h*0.5);
+  grd.addColorStop(0, `rgba(100, 90, 200, ${alpha * 0.92})`);
+  grd.addColorStop(0.4, `rgba(60, 50, 160, ${alpha * 0.85})`);
+  grd.addColorStop(1, `rgba(130, 110, 220, ${alpha * 0.75})`);
+
+  ctx.fillStyle = grd;
+  ctx.fill();
+
+  // Glossy reflection
+  ctx.beginPath();
+  ctx.roundRect(-w*0.5 + 2, -h*0.5 + 2, w * 0.6, h * 0.35, 2);
+  const gloss = ctx.createLinearGradient(-w*0.5, -h*0.5, -w*0.5 + w*0.6, -h*0.5 + h*0.3);
+  gloss.addColorStop(0, `rgba(255,255,255,${alpha * 0.35})`);
+  gloss.addColorStop(1, `rgba(255,255,255,0)`);
+  ctx.fillStyle = gloss;
+  ctx.fill();
+
+  // Sprocket holes - left column
+  const holeR = Math.max(2, w * 0.06);
+  const holeSpacing = h * 0.22;
+  const holes = 4;
+  ctx.fillStyle = `rgba(10, 5, 50, ${alpha * 0.8})`;
+  for (let j = 0; j < holes; j++) {
+    const hy = -h*0.5 + h * 0.1 + j * holeSpacing;
+    ctx.beginPath();
+    ctx.arc(-w*0.5 + w*0.1, hy, holeR, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(w*0.5 - w*0.1, hy, holeR, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Frame dividers
+  ctx.strokeStyle = `rgba(30,20,100,${alpha * 0.5})`;
+  ctx.lineWidth = 0.5;
+  const frameH = h * 0.33;
+  for (let k = 1; k < 3; k++) {
+    ctx.beginPath();
+    ctx.moveTo(-w*0.5 + w*0.18, -h*0.5 + frameH * k);
+    ctx.lineTo(w*0.5 - w*0.18, -h*0.5 + frameH * k);
+    ctx.stroke();
+  }
+
+  // Subtle edge highlight
+  ctx.strokeStyle = `rgba(200,180,255,${alpha * 0.4})`;
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.roundRect(-w*0.5, -h*0.5, w, h, 3);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+let t = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  ctx.clearRect(0, 0, W(), H());
+  t += 0.016;
+
+  // Sort by depth for proper z-order
+  const sorted = [...STRIPS].sort((a, b) => a.depth - b.depth);
+
+  for (const s of sorted) {
+    s.y -= s.speed * 0.35;
+    s.rx += s.rxSpd * 0.7;
+    s.ry += s.rySpd * 0.7;
+    s.rz += s.rzSpd * 0.7;
+
+    if (s.y < -15) {
+      const idx = STRIPS.indexOf(s);
+      STRIPS[idx] = makeStrip(idx, false);
+      continue;
+    }
+
+    const wx = W();
+    const hy = H();
+    const px = (s.x / 100) * wx + Math.sin(t * s.wobbleFreq + s.wobbleOff) * wx * 0.02 * s.wobbleAmp;
+    const py = (s.y / 100) * hy;
+
+    const opacity = Math.min(1, Math.min(s.y / 5, 1)) * (0.55 + s.depth * 0.45);
+
+    ctx.save();
+    ctx.translate(px, py);
+    drawFilmStrip(ctx, s.w, s.h, opacity, s.rx, s.ry, s.rz);
+    ctx.restore();
+  }
+}
+
+animate();
+</script>
